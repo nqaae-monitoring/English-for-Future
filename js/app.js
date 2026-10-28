@@ -366,8 +366,8 @@
   }
   function merged(kind) {
     var base = { vocabulary: D.VOCABULARY, phrases: D.PHRASES, grammar: D.GRAMMAR, listening: D.LISTENING, writing: D.WRITING, negotiations: D.NEGOTIATIONS, difficult: D.DIFFICULT, speaking: SPEAK_TASKS }[kind] || [];
-    var a2 = (C.A2 || {})[kind] || [], b1 = (C.B1 || {})[kind] || [];
-    return a2.concat(b1, base);
+    var a2 = (C.A2 || {})[kind] || [], b1 = (C.B1 || {})[kind] || [], b2 = (C.B2 || {})[kind] || [], c1 = (C.C1 || {})[kind] || [];
+    return a2.concat(b1, base, b2, c1);
   }
   // Items for the learner: own level plus a small i+1 sample; explicit chip filters override.
   function forLevel(kind, items) {

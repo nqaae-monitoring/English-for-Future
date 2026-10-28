@@ -39,16 +39,17 @@
   function wordCount(s) { return (String(s || "").trim().match(/\S+/g) || []).length; }
 
   /* ---------------- module lookups ---------------- */
-  function findVocab(term) { var C = E.content; return (C.A2.vocabulary || []).concat(C.B1.vocabulary || [], E.data.VOCABULARY).filter(function (v) { return v.term === term; })[0]; }
-  function findPhrase(p) { var C = E.content; return (C.A2.phrases || []).concat(C.B1.phrases || [], E.data.PHRASES).filter(function (x) { return x.phrase === p; })[0]; }
-  function findById(kind, id) { var C = E.content; return (C.A2[kind] || []).concat(C.B1[kind] || [], E.data[kind.toUpperCase()] || []).filter(function (x) { return x.id === id; })[0]; }
+  function pool(kind) { var C = E.content, out = []; ["A2", "B1", "B2", "C1"].forEach(function (l) { if (C[l] && C[l][kind]) out = out.concat(C[l][kind]); }); return out.concat(E.data[kind.toUpperCase()] || []); }
+  function findVocab(term) { return pool("vocabulary").filter(function (v) { return v.term === term; })[0]; }
+  function findPhrase(p) { return pool("phrases").filter(function (x) { return x.phrase === p; })[0]; }
+  function findById(kind, id) { return pool(kind).filter(function (x) { return x.id === id; })[0]; }
   function writingSubmitted(topic) { var w = findById("writing", topic.links.writing); if (!w) return null; var hits = (S().imported || []).filter(function (x) { return x.type === "Writing: " + w.type; }); return hits.length ? hits[hits.length - 1] : null; }
   function speakingRecorded(topic) { return (E.activity() || []).filter(function (a) { return a.type === "speaking" && a.note === topic.links.speaking; })[0] || null; }
 
   /* ---------------- completion & XP milestones (existing XP rules, each once) ---------------- */
   function formativeState(topic) {
     var x = st(topic.id), got = 0, max = 0, done = 0, n = 0;
-    topic.sections.forEach(function (sec) { if (FORMATIVE.indexOf(sec.type) < 0) return; n++; max += sec.points || 0; var sc = x.scores[sec.id]; if (sc && sc.done) { done++; got += sc.correct; } });
+    topic.sections.forEach(function (sec) { if (FORMATIVE.indexOf(sec.type) < 0 || !sec.points) return; n++; max += sec.points || 0; var sc = x.scores[sec.id]; if (sc && sc.done) { done++; got += sc.correct; } });
     return { got: got, max: max, done: done, n: n, allDone: n > 0 && done === n };
   }
   function awardOnce(topic, key, type, opts) {
@@ -150,7 +151,8 @@
   /* ---------------- results panel ---------------- */
   function showResults(tp) {
     var x = st(tp.id), f = formativeState(tp), q = quizSection(tp), w = writingSubmitted(tp), sp = speakingRecorded(tp);
-    var rows = tp.sections.filter(function (s) { return FORMATIVE.indexOf(s.type) >= 0; }).map(function (s) { var sc = x.scores[s.id]; return '<div class="box"><span class="small muted">' + esc(uzOn() ? s.title_uz : s.title_en) + '</span><b>' + (sc && sc.done ? sc.correct + ' / ' + s.points : '— / ' + s.points) + '</b></div>'; }).join("");
+    var rows = tp.sections.filter(function (s) { return FORMATIVE.indexOf(s.type) >= 0 && s.points; }).map(function (s) { var sc = x.scores[s.id]; return '<div class="box"><span class="small muted">' + esc(uzOn() ? s.title_uz : s.title_en) + '</span><b>' + (sc && sc.done ? sc.correct + ' / ' + s.points : '— / ' + s.points) + '</b></div>'; }).join("") +
+      tp.sections.filter(function (s) { return s.open && s.open.length; }).map(function (s) { var c = x.checks["open:" + s.id] || {}, k = Object.keys(c).filter(function (i) { return c[i]; }).length; return '<div class="box"><span class="small muted">' + esc(uzOn() ? s.title_uz : s.title_en) + ' · ' + t("self-check", "o‘z-o‘zini tekshirish") + '</span><b>' + k + ' / ' + s.open.length + ' ' + t("matched", "mos") + '</b></div>'; }).join("");
     U.modal('<h2>📊 ' + t("Results", "Natijalar") + ' — ' + esc(tp.title_en) + '</h2><p class="small muted">' + t("Each skill is shown separately. Writing and speaking are not auto-scored.", "Har bir ko‘nikma alohida ko‘rsatiladi. Yozish va gapirish avtomatik baholanmaydi.") + '</p>' +
       '<div class="tp-score">' + rows +
       '<div class="box"><span class="small muted">' + t("Formative total", "Formativ jami") + '</span><b>' + f.got + ' / ' + f.max + '</b></div>' +
@@ -257,23 +259,38 @@
 
   RENDER.reading = function (body, tp, sec) {
     body.innerHTML = '<div class="tp-card" style="line-height:1.7"><button class="btn sm" style="float:right" id="rd-say" aria-label="Listen to the text">🔊</button>' + esc(sec.text_en) + '</div>' +
-      (uzOn() ? '<details class="mt"><summary class="small">🇺🇿 ' + t("Uzbek translation", "O‘zbekcha tarjima") + '</summary><div class="tp-uz">' + esc(sec.text_uz) + '</div></details>' : '') +
+      (uzOn() && sec.text_uz ? '<details class="mt"><summary class="small">🇺🇿 ' + t("Uzbek translation", "O‘zbekcha tarjima") + '</summary><div class="tp-uz">' + esc(sec.text_uz) + '</div></details>' : '') +
       '<h3 class="mt2">' + t("Comprehension", "Tushunish") + ' · ' + sec.points + ' ' + t("points", "ball") + '</h3>';
     body.querySelector("#rd-say").onclick = function () { U.speak(sec.text_en, 0.95); };
-    mcBlock(body, tp, sec, sec.questions);
+    if (sec.questions) mcBlock(body, tp, sec, sec.questions); else if (sec.open) openQA(body, tp, sec);
   };
+  // Open comprehension questions: no semantic grader in this build, so the learner writes an answer, reveals the
+  // model and ticks whether their answer matches. Stored as a self-check; never auto-scored.
+  function openQA(body, tp, sec) {
+    var x = st(tp.id), key = "open:" + sec.id; x.checks[key] = x.checks[key] || {}; x.drafts[key] = x.drafts[key] || {};
+    var wrap = el("div");
+    wrap.innerHTML = '<p class="small muted">' + t("Answer in your own words, then open the model answer and tick if yours has the same meaning. This is a self-check, not an automatic score.", "O‘z so‘zlaringiz bilan javob bering, so‘ng namunani ochib, javobingiz mazmunan mos bo‘lsa belgilang. Bu o‘z-o‘zini tekshirish, avtomatik baho emas.") + '</p>' +
+      sec.open.map(function (q, i) {
+        return '<div class="tp-q" data-oq="' + i + '"><div class="stem">' + (i + 1) + '. ' + esc(q.q) + '</div><textarea rows="2" data-ans="' + i + '" placeholder="' + t("Your answer", "Javobingiz") + '">' + esc(x.drafts[key][i] || "") + '</textarea>' +
+          '<div class="btn-row mt"><button type="button" class="btn sm" data-reveal="' + i + '">' + t("Show model answer", "Namunani ko‘rsatish") + '</button><label class="check"><input type="checkbox" data-ok="' + i + '"' + (x.checks[key][i] ? " checked" : "") + '><span>' + t("My answer has the same meaning", "Javobim mazmunan mos") + '</span></label></div><div class="tp-fb" data-model="' + i + '"></div></div>';
+      }).join("");
+    body.appendChild(wrap);
+    wrap.querySelectorAll("[data-ans]").forEach(function (ta) { ta.oninput = function () { x.drafts[key][ta.dataset.ans] = ta.value; save(); }; });
+    wrap.querySelectorAll("[data-reveal]").forEach(function (b) { b.onclick = function () { var i = +b.dataset.reveal; if (!(x.drafts[key][i] || "").trim()) { toast(t("Write your answer first.", "Avval javobingizni yozing."), "warn"); return; } wrap.querySelector('[data-model="' + i + '"]').innerHTML = '<b>' + t("Model", "Namuna") + ':</b> ' + esc(sec.open[i].a) + ' <span class="muted small">(' + t("not the only correct wording", "yagona to‘g‘ri matn emas") + ')</span>'; }; });
+    wrap.querySelectorAll("[data-ok]").forEach(function (cb) { cb.onchange = function () { x.checks[key][cb.dataset.ok] = cb.checked; save(); }; });
+  }
 
   RENDER.dialogue = function (body, tp, sec) {
     var x = st(tp.id);
     body.innerHTML = '<div class="tp-dialog">' + sec.lines.map(function (l) { return '<div class="line"><span class="who">' + esc(l[0]) + ':</span><span>' + esc(l[1]) + '</span></div>'; }).join("") + '</div>' +
       '<div class="btn-row mt"><button class="btn sm" id="dg-say">🔊 ' + t("Listen to the dialogue", "Dialogni eshitish") + '</button></div>' +
       '<div class="small mt tp-card"><b>' + t("Notes", "Izohlar") + ':</b> ' + sec.notes.map(function (n) { return esc(uzOn() ? n[1] : n[0]); }).join(" · ") + '</div>' +
-      '<h3 class="mt2">' + t("Your turn", "Sizning navbatingiz") + '</h3><p class="small">' + esc(sec.task_en) + uz(sec.task_uz) + '</p><div class="small muted">' + t("Replace", "Almashtiring") + ': ' + sec.placeholders.map(function (p) { return '<span class="tag">' + esc(p) + '</span>'; }).join(" ") + '</div>' +
-      '<label class="field mt"><span>' + t("Your version of Aziz’s lines", "Aziz gaplarining sizning variantingiz") + '</span><textarea id="dg-ta" rows="6">' + esc(x.drafts.dialogue || sec.template) + '</textarea></label>' +
+      '<h3 class="mt2">' + t("Your turn", "Sizning navbatingiz") + '</h3><p class="small">' + esc(sec.task_en) + uz(sec.task_uz) + '</p>' + (sec.placeholders ? '<div class="small muted">' + t("Replace", "Almashtiring") + ': ' + sec.placeholders.map(function (p) { return '<span class="tag">' + esc(p) + '</span>'; }).join(" ") + '</div>' : '') +
+      '<label class="field mt"><span>' + t("Your version of the dialogue", "Dialogning sizning variantingiz") + '</span><textarea id="dg-ta" rows="6">' + esc(x.drafts.dialogue || sec.template || sec.lines.map(function (l) { return l[0] + ": " + l[1]; }).join("\n")) + '</textarea></label>' +
       '<div class="btn-row"><button class="btn" id="dg-reset">↺ ' + t("Reset template", "Shablonni qaytarish") + '</button><button class="btn" id="dg-prac">🔊 ' + t("Hear my version", "Mening variantimni eshitish") + '</button></div>';
     body.querySelector("#dg-say").onclick = function () { U.speak(sec.lines.map(function (l) { return l[1]; }).join(" "), 0.92); };
     body.querySelector("#dg-ta").oninput = function () { x.drafts.dialogue = this.value; save(); };
-    body.querySelector("#dg-reset").onclick = function () { x.drafts.dialogue = sec.template; save(); E.nav("topic"); };
+    body.querySelector("#dg-reset").onclick = function () { x.drafts.dialogue = sec.template || sec.lines.map(function (l) { return l[0] + ": " + l[1]; }).join("\n"); save(); E.nav("topic"); };
     body.querySelector("#dg-prac").onclick = function () { U.speak(body.querySelector("#dg-ta").value, 0.92); };
   };
 
@@ -291,6 +308,7 @@
       body.querySelector("#ls-stop").onclick = function () { window.speechSynthesis.cancel(); };
     }
     if (sec.questions) mcBlock(body, tp, sec, sec.questions);
+    else if (sec.open) openQA(body, tp, sec);
     else if (sec.items) {
       var host2 = el("div"); body.appendChild(host2);
       textExercise(host2, tp, sec, sec.items,
@@ -415,7 +433,7 @@
   }
 
   RENDER.speaking = function (body, tp, sec) {
-    var x = st(tp.id), task = (E.content.A2.speaking || []).filter(function (s) { return s.title === sec.speakingTitle; })[0] || {}, rec = speakingRecorded(tp);
+    var x = st(tp.id), task = pool("speaking").filter(function (s) { return s.title === sec.speakingTitle; })[0] || {}, rec = speakingRecorded(tp);
     body.innerHTML = '<div class="tp-card"><b>' + t("Task", "Topshiriq") + '.</b> ' + esc(task.prompt || "") + uz(task.uz) + '</div>' +
       '<div class="small mt"><b>' + t("Plan", "Reja") + ':</b> ' + sec.plan.map(esc).join(" → ") + ' · ' + t("Preparation", "Tayyorlanish") + ': ' + sec.prep + ' s</div>' +
       '<div class="mt"><b>' + t("Assessment · 20 points (0–5 each)", "Baholash · 20 ball (har biri 0–5)") + ':</b> ' + sec.rubric.map(function (r) { return esc(t(r[0], r[1])); }).join(" · ") + '<div class="small muted">' + t("Pronunciation is judged by intelligibility, not by native-like accent. Without audio, intelligibility and fluency are not auto-scored.", "Talaffuz tushunarlilik bo‘yicha baholanadi, ona tili aksentiga o‘xshashlik bo‘yicha emas. Audio bo‘lmasa tushunarlilik va ravonlikka avtomatik ball qo‘yilmaydi.") + '</div></div>' +
@@ -460,7 +478,8 @@
 
   RENDER.quiz = function (body, tp, sec) {
     var x = st(tp.id), q = x.quiz, attempt = q.attempts.length + 1;
-    body.innerHTML = '<p class="small">' + esc(sec.instructions_en) + uz(sec.instructions_uz) + '</p><div class="small muted mb">' + t("Pass mark", "O‘tish chegarasi") + ': ' + sec.pass + '% (' + Math.ceil(sec.questions.length * sec.pass / 100) + '/' + sec.questions.length + ') · ' + t("Attempt", "Urinish") + ' ' + attempt + (q.best != null ? ' · ' + t("Best", "Eng yaxshi") + ': <b>' + q.best + '%</b>' : '') + ' · ' + t("Retakes allowed; XP is given once.", "Qayta topshirish mumkin; XP bir marta beriladi.") + '</div>';
+    body.innerHTML = '<p class="small">' + esc(sec.instructions_en) + uz(sec.instructions_uz) + '</p><div class="small muted mb">' + t("Pass mark", "O‘tish chegarasi") + ': ' + sec.pass + '% (' + Math.ceil(sec.questions.length * sec.pass / 100) + '/' + sec.questions.length + ') · ' + t("Attempt", "Urinish") + ' ' + attempt + (q.best != null ? ' · ' + t("Best", "Eng yaxshi") + ': <b>' + q.best + '%</b>' : '') + ' · ' + t("Retakes allowed; XP is given once.", "Qayta topshirish mumkin; XP bir marta beriladi.") + '</div>' +
+      (sec.refs ? sec.refs.map(function (r) { return '<details class="mb"><summary class="small">📄 ' + esc(t(r.title_en, r.title_uz)) + '</summary><div class="tp-card small mt" style="line-height:1.6">' + esc(r.text) + '</div></details>'; }).join("") : '');
     mcBlock(body, tp, sec, sec.questions, { shuffle: true, seed: attempt, onResult: function (correct, total) {
       var pct = Math.round(correct / total * 100), passed = pct >= sec.pass;
       q.attempts.push({ date: E.todayStr(), correct: correct, total: total, pct: pct, passed: passed });
@@ -481,7 +500,7 @@
     var i = 0, flipped = false;
     body.innerHTML = '<p class="small muted">' + t("Tap the card to flip. Front: the task; back: the phrase.", "Kartani bosing. Old tomoni: topshiriq; orqa tomoni: ibora.") + '</p><div class="tp-flash" id="rv-card" role="button" tabindex="0" aria-live="polite"></div><div class="flex between mt"><button class="btn" id="rv-prev">←</button><span class="small muted" id="rv-n"></span><button class="btn" id="rv-next">→</button></div>';
     var card = body.querySelector("#rv-card");
-    function draw() { var c = sec.cards[i]; card.innerHTML = flipped ? '<div>' + esc(c[1]) + '</div>' : '<div><div class="small" style="opacity:.8">' + esc(sec.fronts_en[i]) + '</div>' + (uzOn() ? '<div class="mt">' + esc(c[0]) + '</div>' : '') + '</div>'; body.querySelector("#rv-n").textContent = (i + 1) + " / " + sec.cards.length; }
+    function draw() { var c = sec.cards[i], fe = sec.fronts_en ? sec.fronts_en[i] : null; card.innerHTML = flipped ? '<div>' + esc(c[1]) + '</div>' : '<div>' + (fe ? '<div class="small" style="opacity:.8">' + esc(fe) + '</div>' : '') + ((uzOn() || !fe) ? '<div class="mt">' + esc(c[0]) + '</div>' : '') + '</div>'; body.querySelector("#rv-n").textContent = (i + 1) + " / " + sec.cards.length; }
     card.onclick = function () { flipped = !flipped; draw(); if (flipped) U.speak(sec.cards[i][1]); };
     card.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); card.click(); } };
     body.querySelector("#rv-prev").onclick = function () { i = (i - 1 + sec.cards.length) % sec.cards.length; flipped = false; draw(); };
