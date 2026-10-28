@@ -548,16 +548,49 @@
     else S.cefr.lastLevelUpAt = new Date().toISOString();
     var passed = kind === "placement" || score >= 75;
     if (!online()) { if (passed) setCefr(result, kind); else toast(tr("Not passed yet (" + score + "%). You need 75% — keep practising.", "Hali o‘tilmadi (" + score + "%). 75% kerak — mashq qilishda davom eting."), "warn"); save(); return Promise.resolve({ ok: true, cefr_level: cefr() }); }
-    return window.ELH_AUTH.client.rpc("record_level_test", { p_kind: kind, p_from: from, p_result: result, p_score: score, p_details: details || {} }).then(function (r) {
-      if (r.error) throw r.error;
-      var d = r.data || {};
+    save();
+    return sendLevelTest(kind, from, result, score, details).then(function (d) {
+      S.cefr.pendingSync = null;
       if (d.ok === false && d.error === "too_soon") { toast(tr("The placement test can be retaken after 30 days.", "Darajani aniqlash testini 30 kundan keyin qayta topshirish mumkin."), "warn"); }
       else if (d.cefr_level) { setCefr(d.cefr_level, kind); if (kind === "level_up" && d.cefr_level === from) toast(tr("Not passed yet (" + score + "%). You need 75% — keep practising.", "Hali o‘tilmadi (" + score + "%). 75% kerak — mashq qilishda davom eting."), "warn"); }
       (d.new_badges || []).forEach(grantBadge);
       window.ELH_AUTH.refreshProfile();
       save();
       return d;
+    }).catch(function (err) {
+      // Network / session hiccup: keep the result on this device and resend it on the next boot or reconnect.
+      console.warn("record_level_test failed, queued for resync", err);
+      S.cefr.pendingSync = { kind: kind, from: from, result: result, score: score, details: details || {}, at: new Date().toISOString() };
+      if (passed) setCefr(result, kind);
+      save();
+      toast(tr("Result saved on this device — it will be sent to your account when the connection is back.", "Natija shu qurilmada saqlandi — aloqa tiklangach hisobingizga yuboriladi."), "warn");
+      return { ok: false, error: "queued", cefr_level: cefr() };
     });
+  }
+  function sendLevelTest(kind, from, result, score, details) {
+    return window.ELH_AUTH.client.rpc("record_level_test", { p_kind: kind, p_from: from, p_result: result, p_score: Math.round(score || 0), p_details: details || {} })
+      .then(function (r) { if (r.error) throw r.error; return r.data || {}; });
+  }
+  // Self-healing: resend a queued test result, or a local placement that never reached the server.
+  var levelSyncBusy = false;
+  function syncPendingLevel() {
+    if (!online() || levelSyncBusy) return Promise.resolve();
+    var P = window.ELH_AUTH.profile();
+    var pend = S.cefr.pendingSync;
+    if (!pend && P && !P.cefr_level && S.cefr.tests.length) {
+      var last = S.cefr.tests[S.cefr.tests.length - 1];
+      if (last.kind === "placement" && last.result) pend = { kind: "placement", from: last.from, result: last.result, score: last.score, details: last.details || {} };
+    }
+    if (!pend) return Promise.resolve();
+    levelSyncBusy = true;
+    return sendLevelTest(pend.kind, pend.from, pend.result, pend.score, pend.details).then(function (d) {
+      levelSyncBusy = false;
+      S.cefr.pendingSync = null;
+      if (d.cefr_level) { setCefr(d.cefr_level, pend.kind); toast(tr("Your level test result has been saved to your account.", "Daraja testi natijangiz hisobingizga saqlandi."), "good"); }
+      (d.new_badges || []).forEach(grantBadge);
+      window.ELH_AUTH.refreshProfile();
+      save();
+    }).catch(function (e) { levelSyncBusy = false; console.warn("level resync failed", e); });
   }
   function canRetakePlacement() {
     var p = window.ELH_AUTH && window.ELH_AUTH.profile();
@@ -1964,8 +1997,9 @@
       if (!online()) { var sx = $("#um-signout"); if (sx) sx.innerHTML = "🔄 " + tr("Switch account", "Hisobni almashtirish"); }
     }
     window.addEventListener("online", flushXpQueue);
+    window.addEventListener("online", syncPendingLevel);
     flushXpQueue();
-    if (online()) refreshStats();
+    if (online()) { refreshStats(); setTimeout(syncPendingLevel, 1500); }
     // top bar wiring
     $("#theme-toggle").onclick = function () { S.settings.theme = S.settings.theme === "dark" ? "light" : "dark"; applyTheme(); save(); };
     $("#focus-toggle").onclick = function () { document.body.classList.toggle("focus-mode"); toast(document.body.classList.contains("focus-mode") ? "Focus mode on." : "Focus mode off.", ""); };
@@ -2016,7 +2050,7 @@
     levelOf: levelOf,
     forLevel: forLevel,
     xp: { award: awardXp, level: xpLevel, total: function () { return S.xp.total; }, table: XP_TABLE, cap: XP_DAILY_CAP, skills: XP_SKILL },
-    levels: { recordTest: recordTest, canRetakePlacement: canRetakePlacement, isLocked: isLocked },
+    levels: { recordTest: recordTest, canRetakePlacement: canRetakePlacement, isLocked: isLocked, syncPending: syncPendingLevel },
     badges: function () { return S.badges; },
     badgeMeta: BADGES,
     grantBadge: grantBadge,
