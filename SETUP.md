@@ -22,7 +22,7 @@ Supabase sozlanmaguncha sayt **“faqat shu qurilma”** rejimida ishlaydi: hiso
 
 1. Chap menyuda **SQL Editor** → **New query**.
 2. Kompyuteringizdagi `supabase/schema.sql` faylini oching (Bloknot bilan ham bo‘ladi), **hammasini** nusxalab, SQL Editor oynasiga qo‘ying.
-3. **Run** (yoki Ctrl+Enter) tugmasini bosing. Pastda `Success. No rows returned` chiqishi kerak.
+3. **Run** (yoki Ctrl+Enter) tugmasini bosing. “Potential issue detected” ogohlantirishi chiqsa, **Run query** ni bosing (skript eski siyosatlarni qayta yaratadi, bo‘sh bazada hech narsa yo‘qolmaydi). Pastda `Success. No rows returned` chiqishi kerak.
    - Xato chiqsa: matn to‘liq nusxalanganini tekshiring va qayta Run qiling (skript qayta ishga tushirishga mo‘ljallangan).
 4. Tekshirish: **Table Editor** bo‘limida `profiles`, `user_state`, `activity_log`, `level_tests`, `badges`, `weekly_winners` jadvallari paydo bo‘lgan bo‘lishi kerak.
 
@@ -92,6 +92,10 @@ supabase functions deploy admin-actions
 3. Supabase → **Edge Functions** bo‘limida `admin-actions` ko‘rinsa — tayyor. `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` o‘zgaruvchilari Supabase tomonidan avtomatik beriladi; qo‘shimcha secret kerak emas.
 
 > Bu qadam bajarilmasa ham platforma to‘liq ishlaydi. Faqat parolni tiklash tugmasi “Edge Function joylanganmi?” xabarini beradi. Bunday holda parolni Supabase → **Authentication → Users** → foydalanuvchi → **Reset password / Send password recovery** orqali yoki foydalanuvchini o‘chirib qayta ro‘yxatdan o‘tkazish orqali hal qilish mumkin. Bloklash esa Admin paneldan baribir ishlaydi (profil belgisi orqali kirish taqiqlanadi).
+
+## Holat (2026-10-28)
+
+1–5-qadamlar bajarilgan: loyiha yaratilgan, `schema.sql` o‘rnatilgan, email tasdiqlash o‘chirilgan, `config.js` to‘ldirilgan. Sinov hisobi `test_learner1` bilan ro‘yxatdan o‘tish, darajani aniqlash testi, XP va reyting bulutda tekshirildi; sinov hisobini Admin panelidan bloklash yoki Supabase → Authentication → Users dan o‘chirish mumkin. 5-qadam (birinchi admin) va 6-qadam (Edge Function) hali bajarilmagan.
 
 ## 7-qadam. Tekshirish ro‘yxati
 
