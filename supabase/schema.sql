@@ -369,7 +369,7 @@ create trigger profiles_protect_trg
 -- row and admins see everyone. SECURITY DEFINER RPCs bypass RLS anyway.
 
 drop view if exists public.user_stats;
-create view public.user_stats
+create or replace view public.user_stats
 with (security_invoker = true)
 as
 select
@@ -1271,7 +1271,7 @@ returns table (
   login_id            text,
   display_name        text,
   organisation        text,
-  position            text,
+  "position"          text,
   role                text,
   cefr_level          text,
   platform_level      int,
