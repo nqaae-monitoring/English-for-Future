@@ -311,7 +311,8 @@
     ["grammar", "Grammar", "✍️"], ["writing", "Writing", "📝"], ["feed", "Knowledge Feed", "📰"],
     ["import", "Content Importer", "📥"], ["assess", "Assessments", "🏅"], ["progress", "Progress", "📈"],
     ["goals", "Goals", "🎯"], ["settings", "Settings", "⚙️"],
-    ["leaderboard", "Leaderboard", "🏆"], ["admin", "Admin", "🛡️"], ["placement", "Level test", "🎯"]
+    ["leaderboard", "Leaderboard", "🏆"], ["admin", "Admin", "🛡️"], ["placement", "Level test", "🎯"],
+    ["topics", "Topics", "📖"], ["topic", "Topic", "📖"]
   ];
   var NAV_LABEL = {}; NAV.forEach(function (n) { NAV_LABEL[n[0]] = n[1]; });
 
@@ -396,6 +397,22 @@
   }
   function levelTag(kind, item) { var l = levelOf(kind, item); return '<span class="tag lvl lvl-' + l + '">' + l + '</span>'; }
 
+  // Open a module positioned on a specific item (topic pages link here).
+  function openItem(kind, sel) {
+    sel = sel || {};
+    if (sel.level) levelFilter = sel.level;
+    if (kind === "vocab") { levelFilter = "All"; vocabFilter = sel.topic || "All"; vocabIdx = 0; vocabMode = sel.mode || "flash"; navigate("vocab"); return; }
+    if (kind === "phrases") { phraseCat = sel.cat || "All"; navigate("phrases"); return; }
+    var lists = { grammar: ["grammar", function (i) { grammarIdx = i; }], listening: ["listening", function (i) { listenIdx = i; }], writing: ["writing", function (i) { writeIdx = i; }], speaking: ["speaking", function (i) { speakTaskIdx = i; }] };
+    var L = lists[kind]; if (!L) { navigate(kind); return; }
+    var items = content(L[0]);
+    var idx = -1;
+    items.forEach(function (it, i) { if (idx < 0 && ((sel.id && it.id === sel.id) || (sel.title && it.title === sel.title))) idx = i; });
+    if (idx < 0) { levelFilter = "All"; items = content(L[0]); items.forEach(function (it, i) { if (idx < 0 && ((sel.id && it.id === sel.id) || (sel.title && it.title === sel.title))) idx = i; }); }
+    L[1](Math.max(0, idx));
+    navigate(L[0]);
+  }
+
   /* ---------------------------------------------------------------------
      XP, PLATFORM LEVELS, BADGES (server-authoritative; local optimistic copy)
   --------------------------------------------------------------------- */
@@ -407,7 +424,8 @@
     words_100: ["📚", "100 words mastered", "100 ta so‘z o‘zlashtirildi"], words_500: ["🏛️", "500 words mastered", "500 ta so‘z o‘zlashtirildi"],
     first_negotiation: ["🤝", "First negotiation", "Birinchi muzokara"], first_speech: ["🎤", "First speech", "Birinchi nutq"],
     b1_reached: ["🥉", "B1 reached", "B1 darajaga yetildi"], b2_reached: ["🥈", "B2 reached", "B2 darajaga yetildi"], c1_reached: ["🥇", "C1 reached", "C1 darajaga yetildi"],
-    weekly_1: ["🏆", "Weekly #1", "Haftalik 1-o‘rin"]
+    weekly_1: ["🏆", "Weekly #1", "Haftalik 1-o‘rin"],
+    first_introduction: ["🤝", "First Introduction", "Birinchi tanishuv"]
   };
   function xpFor(type, score) { return type === "assessment" ? Math.round((score || 0) / 2) : (XP_TABLE[type] || 0); }
   function xpLevel(total) {
@@ -942,6 +960,7 @@
       '<div class="small muted mt">Target: ~' + task.seconds + 's · Try to use: ' + task.expected.slice(0, 5).map(function (e) { return '<span class="tag">' + esc(e) + '</span>'; }).join(" ") + '</div></div>';
   }
   function modelAnswerFor(task) {
+    if (task.model) return task.model;
     // Reuse difficult-question models where relevant; otherwise a generic strong model built from expected terms.
     if (task.title.indexOf("accreditation") >= 0 || task.title === "Two-minute policy explanation")
       return "Accreditation exists to protect public trust. It holds institutions accountable, drives continuous improvement, and gives students and employers confidence that a qualification means what it claims. Through transparent, evidence-based evaluation we make our standards internationally comparable, while respecting institutional autonomy. In short, accreditation is a public promise of quality — and our task is to make that promise deserved.";
@@ -1908,7 +1927,7 @@
     var nav = $("#nav");
     nav.innerHTML = "";
     if (!S.settings.navCollapsed) S.settings.navCollapsed = {};
-    var sections = { Learn: ["dashboard", "today", "leaderboard"], Practice: ["vocab", "phrases", "speaking", "listening", "grammar", "writing"], Simulate: ["negotiation", "speeches", "difficult"], Grow: ["feed", "import", "assess", "progress", "goals", "settings"] };
+    var sections = { Learn: ["dashboard", "today", "topics", "leaderboard"], Practice: ["vocab", "phrases", "speaking", "listening", "grammar", "writing"], Simulate: ["negotiation", "speeches", "difficult"], Grow: ["feed", "import", "assess", "progress", "goals", "settings"] };
     // Built-in sections default to expanded; add-on sections default to collapsed.
     Object.keys(sections).forEach(function (sec) { addNavSection(nav, sec, sections[sec], false); });
     if (window.ELH_AUTH && window.ELH_AUTH.isAdmin() && VIEWS.admin) addNavSection(nav, "Admin", ["admin"], false);
@@ -1999,6 +2018,9 @@
     levels: { recordTest: recordTest, canRetakePlacement: canRetakePlacement, isLocked: isLocked },
     badges: function () { return S.badges; },
     badgeMeta: BADGES,
+    grantBadge: grantBadge,
+    openItem: openItem,
+    activity: function () { return S.activity; },
     leagueBadge: leagueBadge,
     refreshChrome: refreshChrome,
     refreshStats: refreshStats,

@@ -12,6 +12,7 @@ Sayt: https://nqaae-monitoring.github.io/English-for-Future/
 - **XP, platforma darajalari (1–30), nishonlar** — kunlik 300 XP cheklovi serverda (`award_xp`).
 - **Reyting jadvali** — hafta / oy / umumiy, ko'nikma va daraja filtrlari, 🥇🥈🥉 podium, Oltin/Kumush/Bronza/Rising ligalari, haftalik g'oliblar tarixi.
 - **Admin paneli** — barcha o'quvchilar, qidiruv/filtr/saralash, batafsil sahifa, parolni tiklash, bloklash, rol va daraja o'zgartirish, CSV eksport.
+- **Mavzular (Topics)** — bitta kasbiy vaziyat atrofida lug'at, iboralar, grammatika, tinglash, nutq va yozuvni birlashtirgan tuzilmali darslar; qo'shimcha mashqlar, rolli suhbat, yakuniy test (8/10), takrorlash kartochkalari. Birinchi mavzu: A2-01 "Introducing Yourself and Your Role" (`js/topics/`).
 - Avvalgi barcha modullar (lug'at, iboralar, grammatika, tinglash, nutq, yozuv, muzokara, nutqlar, qiyin savollar, Qualifications English) saqlangan; tungi rejim, o'zbekcha interfeys, mobil ko'rinish.
 
 ## Ishga tushirish
