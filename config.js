@@ -9,8 +9,8 @@
    Bo'sh qoldirilsa platforma faqat shu qurilmada (offline rejimda) ishlaydi.
    ========================================================================= */
 window.EFUTURE_CONFIG = {
-  SUPABASE_URL: "",          // e.g. "https://abcdefghijklmnop.supabase.co"
-  SUPABASE_ANON_KEY: "",     // e.g. "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...."
+  SUPABASE_URL: "https://ghgorstrwpgrhomhwuod.supabase.co",          // e.g. "https://abcdefghijklmnop.supabase.co"
+  SUPABASE_ANON_KEY: "sb_publishable_mSZNtc2kUCOMEdi5A9NUMw_CMKUSqK2",     // e.g. "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...."
   ADMIN_FUNCTION: "admin-actions",   // Edge Function name used by the admin panel
   APP_NAME: "English for Future"
 };
