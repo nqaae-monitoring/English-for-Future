@@ -53,8 +53,13 @@
   }
   function awardOnce(topic, key, type, opts) {
     var x = st(topic.id); if (x.xp[key]) return;
-    x.xp[key] = new Date().toISOString(); save();
-    E.xp.award(type, Object.assign({ note: topic.id + ":" + key }, opts || {}));
+    x.xp[key] = "pending"; save();
+    var p = E.xp.award(type, Object.assign({ note: topic.id + ":" + key + ":" + E.todayStr() }, opts || {}));
+    Promise.resolve(p).then(function (r) {
+      // If the daily cap left nothing to award, clear the flag so the milestone is granted on a later day.
+      if (r && r.awarded > 0) x.xp[key] = new Date().toISOString(); else delete x.xp[key];
+      save();
+    }, function () { delete x.xp[key]; save(); });
   }
   function checkMilestones(topic) {
     var x = st(topic.id), f = formativeState(topic);
@@ -89,7 +94,7 @@
         c.innerHTML = '<div class="flex between"><span class="tag lvl lvl-' + tp.level + '">' + tp.level + ' · ' + tp.order + '</span>' + (x.complete ? '<span class="tp-status ok">✓ ' + t("Completed", "Yakunlangan") + '</span>' : (pct ? '<span class="tp-status pend">' + pct + '%</span>' : '')) + '</div>' +
           '<h3 style="margin-top:8px">' + esc(tp.title_en) + '</h3>' + (uzOn() ? '<div class="small muted">' + esc(tp.title_uz) + '</div>' : '') +
           '<p class="small muted">' + esc(uzOn() ? tp.desc_uz : tp.desc_en) + '</p>' +
-          '<div class="small muted">⏱ ' + esc(tp.time) + ' · ' + esc(tp.skills.join(", ")) + (q != null ? ' · ' + t("Quiz best", "Test") + ' ' + q + '%' : '') + '</div>' + U.bar(pct) +
+          '<div class="small muted">⏱ ' + esc(tp.time) + ' · ' + esc(tp.skills.join(", ")) + (q != null ? ' · ' + t("Quiz best", "Test") + ' ' + q + '%' : '') + '</div>' + (tp.prereq && TOPICS()[tp.prereq] ? '<div class="small muted">↳ ' + t("Recommended before", "Avval tavsiya etiladi") + ': ' + esc(TOPICS()[tp.prereq].title_en) + '</div>' : '') + U.bar(pct) +
           '<button class="btn primary mt block">' + (pct ? t("Continue", "Davom etish") : t("Start topic", "Mavzuni boshlash")) + '</button>';
         c.querySelector("button").onclick = function () { open(tp.id); };
         grid.appendChild(c);
@@ -149,7 +154,7 @@
     U.modal('<h2>📊 ' + t("Results", "Natijalar") + ' — ' + esc(tp.title_en) + '</h2><p class="small muted">' + t("Each skill is shown separately. Writing and speaking are not auto-scored.", "Har bir ko‘nikma alohida ko‘rsatiladi. Yozish va gapirish avtomatik baholanmaydi.") + '</p>' +
       '<div class="tp-score">' + rows +
       '<div class="box"><span class="small muted">' + t("Formative total", "Formativ jami") + '</span><b>' + f.got + ' / ' + f.max + '</b></div>' +
-      '<div class="box"><span class="small muted">' + t("Final quiz (best)", "Yakuniy test (eng yaxshi)") + '</span><b>' + (x.quiz.best != null ? Math.round(x.quiz.best / 10) + ' / 10 · ' + x.quiz.best + '%' : '—') + '</b> <span class="small muted">' + t("pass", "o‘tish") + ' ' + (q.pass || 80) + '%</span></div>' +
+      '<div class="box"><span class="small muted">' + t("Final quiz (best)", "Yakuniy test (eng yaxshi)") + '</span><b>' + (x.quiz.best != null ? Math.round(x.quiz.best / 100 * (q.points || 10)) + ' / ' + (q.points || 10) + ' · ' + x.quiz.best + '%' : '—') + '</b> <span class="small muted">' + t("pass", "o‘tish") + ' ' + (q.pass || 80) + '%</span></div>' +
       '<div class="box"><span class="small muted">' + t("Writing (20)", "Yozish (20)") + '</span><b>' + (w ? t("Submitted · self-assessed", "Yuborildi · o‘z-o‘zini baholash") : t("Not submitted", "Yuborilmagan")) + '</b></div>' +
       '<div class="box"><span class="small muted">' + t("Speaking (20)", "Gapirish (20)") + '</span><b>' + (x.speakingDone ? t("Done · self-assessed", "Bajarildi · o‘z-o‘zini baholash") : t("Not done", "Bajarilmagan")) + (sp ? ' <span class="small muted">(' + t("Studio rule-based score", "Studio avtomatik bali") + ' ' + sp.score + '/100 — ' + t("content & vocabulary only", "faqat mazmun va lug‘at") + ')</span>' : '') + '</b></div></div>' +
       '<div class="small mt2"><b>' + t("Completion", "Yakunlash") + ':</b> ' + (x.complete ? '✓ ' + t("Topic completed", "Mavzu yakunlangan") + (tp.badge ? ' · ' + tp.badge.icon + ' ' + esc(t(tp.badge.en, tp.badge.uz)) : '') : t("All steps reviewed, all exercises done, writing submitted, speaking done and quiz ≥ " + (q.pass || 80) + "%.", "Barcha bosqichlar ko‘rib chiqilgan, barcha mashqlar bajarilgan, yozish yuborilgan, gapirish bajarilgan va test ≥ " + (q.pass || 80) + "%.")) + '</div>' +
@@ -201,7 +206,7 @@
       '<div class="small mt"><b>💡</b> ' + esc(sec.tip_en) + uz(sec.tip_uz) + '</div>' +
       '<div class="mt"><b>' + t("Outcome", "Natija") + '.</b> <span class="small">' + esc(tp.outcome_en) + '</span>' + (uzOn() ? '<ul class="small" style="margin:6px 0 0 18px">' + tp.outcomes_uz.map(function (o) { return '<li>' + esc(o) + '</li>'; }).join("") + '</ul>' : '') + '</div>' +
       '<label class="field mt"><span>' + esc(sec.task_en) + (uzOn() ? ' · ' + esc(sec.task_uz) : '') + '</span><textarea id="tp-intro" rows="2" placeholder="' + esc(sec.sample) + '">' + esc(x.drafts.intro || "") + '</textarea></label>' +
-      '<div class="small muted">' + t("Example", "Namuna") + ': ' + esc(sec.sample) + ' · ' + t("This is a diagnostic task: it is saved but not scored.", sec.note_uz) + '</div>';
+      '<div class="small muted">' + t("Example", "Namuna") + ': ' + esc(sec.sample) + ' · ' + t("This is a diagnostic task: it is saved but not scored.", sec.note_uz) + '</div>' + (sec.privacy_en ? '<div class="small mt tp-card">🔒 ' + esc(sec.privacy_en) + uz(sec.privacy_uz) + '</div>' : '');
     body.querySelector("#tp-intro").oninput = function () { x.drafts.intro = this.value; save(); };
   };
 
@@ -285,9 +290,38 @@
       body.querySelector("#ls-play").onclick = function () { plays++; U.speak(item.text, 0.88); this.textContent = "▶ " + t("Play again", "Qayta eshitish"); };
       body.querySelector("#ls-stop").onclick = function () { window.speechSynthesis.cancel(); };
     }
-    mcBlock(body, tp, sec, sec.questions);
+    if (sec.questions) mcBlock(body, tp, sec, sec.questions);
+    else if (sec.items) {
+      var host2 = el("div"); body.appendChild(host2);
+      textExercise(host2, tp, sec, sec.items,
+        function (it, i) { return '<div><b>' + (i + 1) + '.</b> ' + esc(it.q) + '</div><input type="text" style="margin-top:4px" autocomplete="off" placeholder="' + t("Your answer", "Javobingiz") + '" aria-label="Answer ' + (i + 1) + '">'; },
+        function (it, d) { var v = normSentence(d.querySelector("input").value); if (!v) return null; var ok = answerMatches(v, it.answers); fb(d, ok, it.answers[0], it.explain_en, it.explain_uz); return ok; });
+    }
+    if (sec.dictation) {
+      var x2 = st(tp.id), dd = el("div", { class: "mt2" });
+      dd.innerHTML = '<h3>' + t("Dictation", "Diktant") + ' <span class="small muted">· ' + t("separate practice, not part of the score", "alohida mashq, ballga qo‘shilmaydi") + '</span></h3>' +
+        '<div class="btn-row mb">' + (tts ? '<button class="btn sm" id="dc-play">🔊 ' + t("Play the sentence", "Gapni eshitish") + '</button>' : '<span class="small muted">' + t("No audio: compare your sentence with the model.", "Audio yo‘q: gapingizni namuna bilan taqqoslang.") + '</span>') + '</div>' +
+        '<textarea id="dc-ta" rows="2" placeholder="' + t("Type what you hear…", "Eshitganingizni yozing…") + '">' + esc(x2.drafts.dictation || "") + '</textarea><div class="btn-row mt"><button class="btn primary sm" id="dc-check">' + t("Check", "Tekshirish") + '</button></div><div class="tp-fb mt" id="dc-fb" aria-live="polite"></div>';
+      body.appendChild(dd);
+      var dp = dd.querySelector("#dc-play"); if (dp) dp.onclick = function () { U.speak(sec.dictation.text, 0.85); };
+      dd.querySelector("#dc-ta").oninput = function () { x2.drafts.dictation = this.value; save(); };
+      dd.querySelector("#dc-check").onclick = function () {
+        var v = normSentence(dd.querySelector("#dc-ta").value); if (!v) { toast(t("Type the sentence first.", "Avval gapni yozing."), "warn"); return; }
+        var ok = sec.dictation.accepted.some(function (a) { return normSentence(a) === v; });
+        var model = sec.dictation.text;
+        var words = normSentence(model).split(" "), mine = v.split(" "), hit = 0; words.forEach(function (w) { if (mine.indexOf(w) >= 0) hit++; });
+        x2.checks.dictation = { ok: ok, at: new Date().toISOString() }; save();
+        dd.querySelector("#dc-fb").innerHTML = (ok ? '<span class="ok">✓ ' + t("Exactly right.", "Aynan to‘g‘ri.") + '</span>' : '<span class="bad">✗ ' + t("Not exact", "Aniq emas") + '</span> — ' + hit + '/' + words.length + ' ' + t("words matched", "so‘z mos keldi") + '. ' + t("Model", "Namuna") + ': <b>' + esc(model) + '</b>');
+      };
+    }
     var row = el("div", { class: "btn-row mt" }); row.appendChild(linkBtn("🎧 " + t("Dictation & shadowing in Listening", "Listening bo‘limida diktant va shadowing"), "listening", { id: sec.listeningId, level: "A2" })); body.appendChild(row);
   };
+  // Free-text answer check: exact normalised match, or the accepted answer contained as a phrase in a full sentence;
+  // negated answers ("not Bukhara", "isn't ...") only pass on an exact match.
+  function answerMatches(v, answers) {
+    if (/\b(not|no|never)\b|n't/.test(v)) return answers.some(function (a) { return normSentence(a) === v; });
+    return answers.some(function (a) { var n = normSentence(a); return n === v || (" " + v + " ").indexOf(" " + n + " ") >= 0; });
+  }
 
   RENDER.matching = function (body, tp, sec) {
     var x = st(tp.id), prev = x.scores[sec.id], pairs = {}, sel = null;
@@ -456,8 +490,10 @@
   };
 
   RENDER.homework = function (body, tp, sec) {
-    body.innerHTML = '<ol style="margin:0 0 0 20px">' + (uzOn() ? sec.steps_uz : sec.steps_en).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join("") + '</ol><div class="small mt"><b>' + t("Question examples", "Savol namunalari") + ':</b> ' + sec.samples.map(esc).join(" · ") + '</div><div class="small muted mt">' + esc(uzOn() ? sec.note_uz : sec.note_en) + '</div><div id="hw-check"></div>';
+    var xh = st(tp.id); xh.drafts.profile = xh.drafts.profile || {};
+    body.innerHTML = (sec.profile ? '<div class="tp-card mb"><b>' + t("Fill in the profile", "Profilni to‘ldiring") + '</b><div class="grid cols-2 tight mt">' + sec.profile.map(function (f, i) { return '<label class="field"><span>' + esc(uzOn() ? f[1] : f[0]) + '</span><input type="text" data-pf="' + i + '" value="' + esc(xh.drafts.profile[i] || "") + '"></label>'; }).join("") + '</div></div>' : '') + '<ol style="margin:0 0 0 20px">' + (uzOn() ? sec.steps_uz : sec.steps_en).map(function (s) { return '<li>' + esc(s) + '</li>'; }).join("") + '</ol><div class="small mt"><b>' + t("Question examples", "Savol namunalari") + ':</b> ' + sec.samples.map(esc).join(" · ") + '</div><div class="small muted mt">' + esc(uzOn() ? sec.note_uz : sec.note_en) + '</div><div id="hw-check"></div>';
     checklist(body.querySelector("#hw-check"), tp, sec, uzOn() ? sec.steps_uz : sec.steps_en, "homework");
+    body.querySelectorAll("[data-pf]").forEach(function (inp) { inp.oninput = function () { xh.drafts.profile[inp.dataset.pf] = inp.value; save(); }; });
   };
 
   /* ---------------- register ---------------- */

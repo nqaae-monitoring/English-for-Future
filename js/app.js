@@ -441,8 +441,9 @@
     var key = type + ":" + (opts.note || "");
     var repeatable = type === "word_mastered" || type === "phrase_saved";
     if (!repeatable && S.xp.seen[key]) return Promise.resolve({ awarded: 0, total: S.xp.total });
-    S.xp.seen[key] = 1;
     var amount = Math.min(xpFor(type, opts.score), Math.max(0, XP_DAILY_CAP - S.xp.today));
+    if (amount <= 0) return Promise.resolve({ awarded: 0, total: S.xp.total, capped: true }); // cap reached: do not consume the dedup key
+    S.xp.seen[key] = 1;
     var skill = XP_SKILL[type] || "assessment";
     S.xp.total += amount; S.xp.today += amount;
     S.xp.bySkill[skill] = (S.xp.bySkill[skill] || 0) + amount;
